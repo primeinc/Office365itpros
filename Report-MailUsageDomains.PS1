@@ -18,14 +18,26 @@ If ((Get-MgBetaAdminReportSetting).DisplayConcealedNames -eq $True) {
 }
 
 Write-Output "Fetching mail activity usage report data..."
-Get-MgReportEmailActivityUserDetail -Period 'D7' -OutFile 'c:\temp\d7.csv'
-Get-MgReportEmailActivityUserDetail -Period 'D30' -OutFile 'c:\temp\d30.csv'
-Get-MgReportEmailActivityUserDetail -Period 'D90' -OutFile 'c:\temp\d90.csv'
-Get-MgReportEmailActivityUserDetail -Period 'D180' -OutFile 'c:\temp\d180.csv'
+# Bypass Get-MgReportEmailActivityUserDetail. The SDK cmdlet's internal progress callback
+# passes PercentComplete = Int32.MaxValue when response length is unknown, which throws
+# regardless of $ProgressPreference. Call the Graph endpoint directly instead.
+function Save-EmailActivityReport {
+    param(
+        [Parameter(Mandatory)][string]$Period,
+        [Parameter(Mandatory)][string]$OutFile
+    )
+    $Uri = "https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(period='$Period')"
+    Invoke-MgGraphRequest -Method GET -Uri $Uri -OutputFilePath $OutFile
+}
+
+Save-EmailActivityReport -Period 'D7'   -OutFile 'c:\temp\d7.csv'
+Save-EmailActivityReport -Period 'D30'  -OutFile 'c:\temp\d30.csv'
+Save-EmailActivityReport -Period 'D90'  -OutFile 'c:\temp\d90.csv'
+Save-EmailActivityReport -Period 'D180' -OutFile 'c:\temp\d180.csv'
 # Import the data into arrays
 [array]$D7Data = Import-CSV 'c:\temp\d7.csv' | Sort-Object 'User Principal Name'
 [array]$D30Data = Import-CSV 'c:\temp\d30.csv' | Sort-Object 'User Principal Name'
-[array]$D90ata = Import-CSV 'c:\temp\d90.csv' | Sort-Object 'User Principal Name'
+[array]$D90Data = Import-CSV 'c:\temp\d90.csv' | Sort-Object 'User Principal Name'
 [array]$D180Data = Import-CSV 'c:\temp\d180.csv' | Sort-Object 'User Principal Name'
 
 # Process mailboxes
@@ -33,7 +45,7 @@ $Report = [System.Collections.Generic.List[Object]]::new()
 ForEach ($User in $Users) {
     [array]$D7Email = $D7Data | Where-Object {$_.'User Principal Name' -eq $User.UserPrincipalName}
     [array]$D30Email = $D30Data| Where-Object {$_.'User Principal Name' -eq $User.UserPrincipalName}
-    [array]$D90Email = $D90ata | Where-Object {$_.'User Principal Name' -eq $User.UserPrincipalName}
+    [array]$D90Email = $D90Data | Where-Object {$_.'User Principal Name' -eq $User.UserPrincipalName}
     [array]$D180Email = $D180Data | Where-Object {$_.'User Principal Name' -eq $User.UserPrincipalName}
 
     If ($D7Email.'Report Refresh Date') {
@@ -60,7 +72,7 @@ ForEach ($User in $Users) {
         'D7 Mail In'    = $D7Email.'Receive Count'
         'D7 Mail Out'   = $D7Email.'Send Count'         
         'D30 Mail In'   = $D30Email.'Receive Count'  
-        'D30 Mail Out'  = $D30EMail.'Send Count'     
+        'D30 Mail Out'  = $D30Email.'Send Count'
         'D90 Mail In'   = $D90Email.'Receive Count'   
         'D90 Mail Out'  = $D90Email.'Send Count'      
         'D180 Mail In'  = $D180Email.'Receive Count'  
